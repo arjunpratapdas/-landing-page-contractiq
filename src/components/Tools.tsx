@@ -1,7 +1,6 @@
-
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { File, FileText, Upload, Send, ChevronDown } from 'lucide-react';
+import { File, FileText, Upload, Send, ChevronDown, Download, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
@@ -12,6 +11,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Textarea } from '@/components/ui/textarea';
 
 const Tools = () => {
   const [selectedDocument, setSelectedDocument] = useState('non-disclosure');
@@ -19,17 +19,39 @@ const Tools = () => {
   const [question, setQuestion] = useState('');
   const [contractRequirements, setContractRequirements] = useState('');
   const [jurisdiction, setJurisdiction] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [generatedContract, setGeneratedContract] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setUploadedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      
+      if (file.size > maxSize) {
+        toast.error("File too large", {
+          description: "Please upload a file smaller than 10MB"
+        });
+        return;
+      }
+      
+      const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error("Invalid file type", {
+          description: "Please upload a PDF, DOC, or DOCX file"
+        });
+        return;
+      }
+      
+      setUploadedFile(file);
       toast.success("File uploaded successfully", {
-        description: e.target.files[0].name
+        description: file.name
       });
     }
   };
 
-  const handleAskQuestion = () => {
+  const handleAskQuestion = async () => {
     if (question.trim() === '') {
       toast.error("Please enter a question");
       return;
@@ -40,20 +62,93 @@ const Tools = () => {
       return;
     }
 
-    // Here you would typically send the question to an API
-    toast.info("Processing your question...");
-    setQuestion('');
+    setIsAnalyzing(true);
+    
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('document', uploadedFile);
+      formData.append('question', question);
+      
+      const response = await fetch('/api/analyze-document/', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setAnalysisResult(data.analysis);
+        toast.success("Document analyzed successfully");
+      } else {
+        throw new Error(data.error || 'Analysis failed');
+      }
+    } catch (error) {
+      console.error('Analysis error:', error);
+      toast.error("Analysis failed", {
+        description: error instanceof Error ? error.message : "Please try again later"
+      });
+    } finally {
+      setIsAnalyzing(false);
+      setQuestion('');
+    }
   };
 
-  const handleGenerateContract = () => {
+  const handleGenerateContract = async () => {
     if (!jurisdiction.trim()) {
       toast.error("Please enter a jurisdiction");
       return;
     }
 
-    toast.success("Generating contract...", {
-      description: "Your " + getDocumentLabel(selectedDocument) + " is being generated"
-    });
+    setIsGenerating(true);
+    
+    try {
+      const response = await fetch('/api/generate-contract/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          document_type: selectedDocument,
+          requirements: contractRequirements,
+          jurisdiction: jurisdiction,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setGeneratedContract(data.contract_text);
+        toast.success("Contract generated successfully", {
+          description: `Your ${getDocumentLabel(selectedDocument)} is ready`
+        });
+      } else {
+        throw new Error(data.error || 'Contract generation failed');
+      }
+    } catch (error) {
+      console.error('Generation error:', error);
+      toast.error("Contract generation failed", {
+        description: error instanceof Error ? error.message : "Please try again later"
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadContract = () => {
+    if (!generatedContract) return;
+    
+    const blob = new Blob([generatedContract], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${getDocumentLabel(selectedDocument)}-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast.success("Contract downloaded successfully");
   };
 
   const getDocumentLabel = (value: string) => {
@@ -69,6 +164,14 @@ const Tools = () => {
   };
   
   const renderContractPreview = () => {
+    if (generatedContract) {
+      return (
+        <div className="text-sm text-white/80 max-h-56 overflow-y-auto whitespace-pre-wrap">
+          {generatedContract.substring(0, 500)}...
+        </div>
+      );
+    }
+    
     if (selectedDocument === 'non-disclosure') {
       return (
         <div className="text-sm text-white/80 max-h-56 overflow-y-auto">
@@ -194,11 +297,23 @@ const Tools = () => {
                     />
                   </label>
                   {!uploadedFile && (
-                    <p className="text-white/50 text-sm mt-3">PDF, DOC, or DOCX files supported</p>
+                    <p className="text-white/50 text-sm mt-3">PDF, DOC, or DOCX files up to 10MB</p>
                   )}
                 </div>
               </div>
             </div>
+            
+            {analysisResult && (
+              <div className="bg-muted/30 rounded-lg p-4 mb-5">
+                <div className="flex items-center mb-2">
+                  <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+                  <h4 className="font-medium">Analysis Result</h4>
+                </div>
+                <div className="text-white/80 text-sm max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {analysisResult}
+                </div>
+              </div>
+            )}
             
             <div className="bg-muted/30 rounded-lg p-4 mb-5">
               <p className="text-white/80 italic">
@@ -214,12 +329,18 @@ const Tools = () => {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 className="w-full pr-10"
+                disabled={isAnalyzing}
               />
               <button
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-contractBlue-400 hover:text-contractBlue-300"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-contractBlue-400 hover:text-contractBlue-300 disabled:opacity-50"
                 onClick={handleAskQuestion}
+                disabled={isAnalyzing || !uploadedFile || !question.trim()}
               >
-                <Send size={18} />
+                {isAnalyzing ? (
+                  <div className="animate-spin h-4 w-4 border-2 border-contractBlue-400 border-t-transparent rounded-full" />
+                ) : (
+                  <Send size={18} />
+                )}
               </button>
             </div>
           </motion.div>
@@ -239,6 +360,9 @@ const Tools = () => {
             
             <div className="mb-5">
               <div className="mb-4">
+                <label className="block text-sm font-medium text-white/80 mb-2">
+                  Agreement Type
+                </label>
                 <Select
                   value={selectedDocument}
                   onValueChange={setSelectedDocument}
@@ -252,14 +376,17 @@ const Tools = () => {
                     <SelectItem value="service">Service Agreement</SelectItem>
                     <SelectItem value="partnership">Partnership Agreement</SelectItem>
                     <SelectItem value="legal-agreement">Legal Agreement</SelectItem>
-                    <SelectItem value="sale-deed" className="pl-6">└ Sale Deed</SelectItem>
+                    <SelectItem value="sale-deed">Sale Deed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div className="mb-4">
-                <textarea
-                  placeholder="Describe your requirements..."
+                <label className="block text-sm font-medium text-white/80 mb-2">
+                  Requirements
+                </label>
+                <Textarea
+                  placeholder="Describe your specific requirements..."
                   rows={3}
                   className="form-input resize-none h-32 w-full"
                   value={contractRequirements}
@@ -268,19 +395,31 @@ const Tools = () => {
               </div>
               
               <div className="mb-4">
+                <label className="block text-sm font-medium text-white/80 mb-2">
+                  Jurisdiction *
+                </label>
                 <Input
                   type="text"
-                  placeholder="Jurisdiction"
+                  placeholder="e.g., New York, USA"
                   value={jurisdiction}
                   onChange={(e) => setJurisdiction(e.target.value)}
+                  required
                 />
               </div>
               
               <Button 
                 className="w-full bg-gradient-blue hover:shadow-lg hover:shadow-blue-500/20 py-5 mb-4"
                 onClick={handleGenerateContract}
+                disabled={isGenerating || !jurisdiction.trim()}
               >
-                Generate Contract
+                {isGenerating ? (
+                  <span className="flex items-center justify-center">
+                    <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                    Generating Contract...
+                  </span>
+                ) : (
+                  'Generate Contract'
+                )}
               </Button>
             </div>
             
@@ -289,9 +428,14 @@ const Tools = () => {
               {renderContractPreview()}
             </div>
             
-            <Button variant="outline" className="w-full border-white/10 flex items-center justify-center">
-              <FileText className="h-4 w-4 mr-2" />
-              Download
+            <Button 
+              variant="outline" 
+              className="w-full border-white/10 flex items-center justify-center"
+              onClick={handleDownloadContract}
+              disabled={!generatedContract}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download Contract
             </Button>
           </motion.div>
         </div>
