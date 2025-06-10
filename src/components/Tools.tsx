@@ -145,7 +145,8 @@ const Tools = () => {
 
   const generateContractWithGemini = async (prompt: string) => {
     const GEMINI_API_KEY = 'AIzaSyCIOef1EKeFUxZh83z4p_1ETntXi8nEsfU';
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+    // Updated to use the correct Gemini API endpoint
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
     try {
       const response = await fetch(GEMINI_API_URL, {
@@ -158,19 +159,46 @@ const Tools = () => {
             parts: [{
               text: prompt
             }]
-          }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 1,
+            topP: 1,
+            maxOutputTokens: 8192,
+          },
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            }
+          ]
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Gemini API response:', errorText);
+        throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
       
-      if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+      if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
         return data.candidates[0].content.parts[0].text;
       } else {
+        console.error('Invalid Gemini API response:', data);
         throw new Error('Invalid response from Gemini API');
       }
     } catch (error) {
@@ -227,7 +255,9 @@ The contract should include:
 6. Current date: ${new Date().toLocaleDateString()}
 7. Compliance with laws of ${jurisdiction}
 
-Format the contract professionally with proper legal language and structure. Make it comprehensive and legally sound.`;
+Format the contract professionally with proper legal language and structure. Make it comprehensive and legally sound.
+
+Please provide the complete contract text formatted properly for legal use.`;
 
       const contractText = await generateContractWithGemini(prompt);
       
@@ -258,13 +288,32 @@ Format the contract professionally with proper legal language and structure. Mak
           <meta charset="utf-8">
           <title>Contract Document</title>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
-            h1 { text-align: center; margin-bottom: 30px; }
-            .contract-content { white-space: pre-wrap; }
+            body { 
+              font-family: 'Times New Roman', serif; 
+              line-height: 1.6; 
+              margin: 40px; 
+              color: #000;
+              background: #fff;
+            }
+            h1 { 
+              text-align: center; 
+              margin-bottom: 30px; 
+              font-size: 24px;
+              font-weight: bold;
+            }
+            .contract-content { 
+              white-space: pre-wrap; 
+              font-size: 12px;
+              line-height: 1.5;
+            }
+            @media print {
+              body { margin: 20px; }
+              .contract-content { font-size: 11px; }
+            }
           </style>
         </head>
         <body>
-          <div class="contract-content">${generatedContract}</div>
+          <div class="contract-content">${generatedContract.replace(/\n/g, '<br>')}</div>
         </body>
         </html>
       `;
@@ -281,7 +330,7 @@ Format the contract professionally with proper legal language and structure. Mak
       URL.revokeObjectURL(url);
       
       toast.success("Contract downloaded as HTML", {
-        description: "You can convert this to PDF using your browser's print function"
+        description: "You can convert this to PDF using your browser's print function (Ctrl+P → Save as PDF)"
       });
     } catch (error) {
       toast.error("Download failed", {
