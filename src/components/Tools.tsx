@@ -18,11 +18,60 @@ const Tools = () => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [question, setQuestion] = useState('');
   const [contractRequirements, setContractRequirements] = useState('');
-  const [jurisdiction, setJurisdiction] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [selectedState, setSelectedState] = useState('');
+  const [projectLocation, setProjectLocation] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [generatedContract, setGeneratedContract] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+
+  // Jurisdiction data
+  const countries = [
+    { value: 'us', label: 'United States' },
+    { value: 'ca', label: 'Canada' },
+    { value: 'uk', label: 'United Kingdom' },
+    { value: 'au', label: 'Australia' },
+    { value: 'de', label: 'Germany' },
+    { value: 'fr', label: 'France' },
+    { value: 'in', label: 'India' },
+    { value: 'sg', label: 'Singapore' },
+  ];
+
+  const statesByCountry = {
+    us: [
+      { value: 'ca', label: 'California' },
+      { value: 'ny', label: 'New York' },
+      { value: 'tx', label: 'Texas' },
+      { value: 'fl', label: 'Florida' },
+      { value: 'il', label: 'Illinois' },
+      { value: 'wa', label: 'Washington' },
+      { value: 'ma', label: 'Massachusetts' },
+      { value: 'nj', label: 'New Jersey' },
+    ],
+    ca: [
+      { value: 'on', label: 'Ontario' },
+      { value: 'qc', label: 'Quebec' },
+      { value: 'bc', label: 'British Columbia' },
+      { value: 'ab', label: 'Alberta' },
+      { value: 'mb', label: 'Manitoba' },
+      { value: 'sk', label: 'Saskatchewan' },
+    ],
+    uk: [
+      { value: 'england', label: 'England' },
+      { value: 'scotland', label: 'Scotland' },
+      { value: 'wales', label: 'Wales' },
+      { value: 'ni', label: 'Northern Ireland' },
+    ],
+    au: [
+      { value: 'nsw', label: 'New South Wales' },
+      { value: 'vic', label: 'Victoria' },
+      { value: 'qld', label: 'Queensland' },
+      { value: 'wa', label: 'Western Australia' },
+      { value: 'sa', label: 'South Australia' },
+      { value: 'tas', label: 'Tasmania' },
+    ],
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -95,14 +144,26 @@ const Tools = () => {
   };
 
   const handleGenerateContract = async () => {
-    if (!jurisdiction.trim()) {
-      toast.error("Please enter a jurisdiction");
+    if (!selectedCountry) {
+      toast.error("Please select a country");
       return;
     }
 
     setIsGenerating(true);
     
     try {
+      // Build jurisdiction string
+      let jurisdiction = countries.find(c => c.value === selectedCountry)?.label || '';
+      if (selectedState && statesByCountry[selectedCountry as keyof typeof statesByCountry]) {
+        const stateName = statesByCountry[selectedCountry as keyof typeof statesByCountry]?.find(s => s.value === selectedState)?.label;
+        if (stateName) {
+          jurisdiction = `${stateName}, ${jurisdiction}`;
+        }
+      }
+      if (projectLocation.trim()) {
+        jurisdiction = `${projectLocation}, ${jurisdiction}`;
+      }
+
       const response = await fetch('/api/generate-contract/', {
         method: 'POST',
         headers: {
@@ -380,10 +441,72 @@ const Tools = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Jurisdiction Section */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-white/80 mb-2">
+                  Jurisdiction
+                </label>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-xs text-white/60 mb-1">Country *</label>
+                    <Select
+                      value={selectedCountry}
+                      onValueChange={(value) => {
+                        setSelectedCountry(value);
+                        setSelectedState(''); // Reset state when country changes
+                      }}
+                    >
+                      <SelectTrigger className="w-full bg-muted/30 border border-white/10">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {countries.map((country) => (
+                          <SelectItem key={country.value} value={country.value}>
+                            {country.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedCountry && statesByCountry[selectedCountry as keyof typeof statesByCountry] && (
+                    <div>
+                      <label className="block text-xs text-white/60 mb-1">State/Province</label>
+                      <Select
+                        value={selectedState}
+                        onValueChange={setSelectedState}
+                      >
+                        <SelectTrigger className="w-full bg-muted/30 border border-white/10">
+                          <SelectValue placeholder="Select state/province" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {statesByCountry[selectedCountry as keyof typeof statesByCountry]?.map((state) => (
+                            <SelectItem key={state.value} value={state.value}>
+                              {state.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs text-white/60 mb-1">Project Location (Optional)</label>
+                    <Input
+                      type="text"
+                      placeholder="e.g., San Francisco, Downtown, etc."
+                      value={projectLocation}
+                      onChange={(e) => setProjectLocation(e.target.value)}
+                      className="bg-muted/30 border border-white/10"
+                    />
+                  </div>
+                </div>
+              </div>
               
               <div className="mb-4">
                 <label className="block text-sm font-medium text-white/80 mb-2">
-                  Requirements
+                  Additional Requirements
                 </label>
                 <Textarea
                   placeholder="Describe your specific requirements..."
@@ -394,23 +517,10 @@ const Tools = () => {
                 />
               </div>
               
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Jurisdiction *
-                </label>
-                <Input
-                  type="text"
-                  placeholder="e.g., New York, USA"
-                  value={jurisdiction}
-                  onChange={(e) => setJurisdiction(e.target.value)}
-                  required
-                />
-              </div>
-              
               <Button 
                 className="w-full bg-gradient-blue hover:shadow-lg hover:shadow-blue-500/20 py-5 mb-4"
                 onClick={handleGenerateContract}
-                disabled={isGenerating || !jurisdiction.trim()}
+                disabled={isGenerating || !selectedCountry}
               >
                 {isGenerating ? (
                   <span className="flex items-center justify-center">
