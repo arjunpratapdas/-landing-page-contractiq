@@ -143,6 +143,42 @@ const Tools = () => {
     }
   };
 
+  const generateContractWithGemini = async (prompt: string) => {
+    const GEMINI_API_KEY = 'AIzaSyCIOef1EKeFUxZh83z4p_1ETntXi8nEsfU';
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+
+    try {
+      const response = await fetch(GEMINI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+        return data.candidates[0].content.parts[0].text;
+      } else {
+        throw new Error('Invalid response from Gemini API');
+      }
+    } catch (error) {
+      console.error('Gemini API error:', error);
+      throw error;
+    }
+  };
+
   const handleGenerateContract = async () => {
     if (!selectedCountry) {
       toast.error("Please select a country");
@@ -164,28 +200,42 @@ const Tools = () => {
         jurisdiction = `${projectLocation}, ${jurisdiction}`;
       }
 
-      const response = await fetch('/api/generate-contract/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          document_type: selectedDocument,
-          requirements: contractRequirements,
-          jurisdiction: jurisdiction,
-        }),
+      // Get document type label for better prompting
+      const documentTypeLabel = {
+        'non-disclosure': 'Non-Disclosure Agreement',
+        'employment': 'Employment Contract',
+        'service': 'Service Agreement',
+        'partnership': 'Partnership Agreement',
+        'legal-agreement': 'Legal Agreement',
+        'sale-deed': 'Sale Deed'
+      }[selectedDocument] || 'Legal Document';
+
+      // Create a comprehensive prompt for Gemini
+      const prompt = `Generate a professional ${documentTypeLabel} for the jurisdiction of ${jurisdiction}.
+
+The document should be formatted as a proper legal contract with appropriate sections, clauses, and legal language suitable for ${jurisdiction}.
+
+Additional requirements for this contract:
+${contractRequirements || 'Standard terms and conditions appropriate for this type of agreement.'}
+
+The contract should include:
+1. Proper legal headings and structure
+2. Numbered sections and subsections
+3. Clear definitions section
+4. Appropriate clauses for ${documentTypeLabel}
+5. Signature blocks at the end
+6. Current date: ${new Date().toLocaleDateString()}
+7. Compliance with laws of ${jurisdiction}
+
+Format the contract professionally with proper legal language and structure. Make it comprehensive and legally sound.`;
+
+      const contractText = await generateContractWithGemini(prompt);
+      
+      setGeneratedContract(contractText);
+      toast.success("Contract generated successfully", {
+        description: `Your ${documentTypeLabel} is ready for download`
       });
       
-      const data = await response.json();
-      
-      if (data.success) {
-        setGeneratedContract(data.contract_text);
-        toast.success("Contract generated successfully", {
-          description: `Your ${getDocumentLabel(selectedDocument)} is ready`
-        });
-      } else {
-        throw new Error(data.error || 'Contract generation failed');
-      }
     } catch (error) {
       console.error('Generation error:', error);
       toast.error("Contract generation failed", {
@@ -196,20 +246,76 @@ const Tools = () => {
     }
   };
 
-  const handleDownloadContract = () => {
+  const downloadAsPDF = async () => {
     if (!generatedContract) return;
     
-    const blob = new Blob([generatedContract], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${getDocumentLabel(selectedDocument)}-${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      // Create a simple HTML structure for PDF conversion
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Contract Document</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
+            h1 { text-align: center; margin-bottom: 30px; }
+            .contract-content { white-space: pre-wrap; }
+          </style>
+        </head>
+        <body>
+          <div class="contract-content">${generatedContract}</div>
+        </body>
+        </html>
+      `;
+      
+      // Create blob and download
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${getDocumentLabel(selectedDocument)}-${new Date().toISOString().split('T')[0]}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success("Contract downloaded as HTML", {
+        description: "You can convert this to PDF using your browser's print function"
+      });
+    } catch (error) {
+      toast.error("Download failed", {
+        description: "Please try again"
+      });
+    }
+  };
+
+  const downloadAsDOCX = async () => {
+    if (!generatedContract) return;
     
-    toast.success("Contract downloaded successfully");
+    try {
+      // Create a simple RTF format that can be opened by Word
+      const rtfContent = `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}
+\\f0\\fs24 ${generatedContract.replace(/\n/g, '\\par ')}}`;
+      
+      const blob = new Blob([rtfContent], { type: 'application/rtf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${getDocumentLabel(selectedDocument)}-${new Date().toISOString().split('T')[0]}.rtf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success("Contract downloaded as RTF", {
+        description: "This file can be opened in Microsoft Word"
+      });
+    } catch (error) {
+      toast.error("Download failed", {
+        description: "Please try again"
+      });
+    }
   };
 
   const getDocumentLabel = (value: string) => {
@@ -538,15 +644,26 @@ const Tools = () => {
               {renderContractPreview()}
             </div>
             
-            <Button 
-              variant="outline" 
-              className="w-full border-white/10 flex items-center justify-center"
-              onClick={handleDownloadContract}
-              disabled={!generatedContract}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Download Contract
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="flex-1 border-white/10 flex items-center justify-center"
+                onClick={downloadAsPDF}
+                disabled={!generatedContract}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download HTML
+              </Button>
+              <Button 
+                variant="outline" 
+                className="flex-1 border-white/10 flex items-center justify-center"
+                onClick={downloadAsDOCX}
+                disabled={!generatedContract}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download RTF
+              </Button>
+            </div>
           </motion.div>
         </div>
       </div>
