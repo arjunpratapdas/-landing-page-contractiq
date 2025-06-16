@@ -116,10 +116,11 @@ const Tools = () => {
     try {
       // Create FormData for file upload
       const formData = new FormData();
-      formData.append('document', uploadedFile);
+      formData.append('file', uploadedFile);
       formData.append('question', question);
+      formData.append('analysis_type', 'general');
       
-      const response = await fetch('/api/analyze-document/', {
+      const response = await fetch('/api/analyze-document', {
         method: 'POST',
         body: formData,
       });
@@ -128,9 +129,11 @@ const Tools = () => {
       
       if (data.success) {
         setAnalysisResult(data.analysis);
-        toast.success("Document analyzed successfully");
+        toast.success("Document analyzed successfully", {
+          description: `Analysis completed using ${data.provider}`
+        });
       } else {
-        throw new Error(data.error || 'Analysis failed');
+        throw new Error(data.detail || 'Analysis failed');
       }
     } catch (error) {
       console.error('Analysis error:', error);
