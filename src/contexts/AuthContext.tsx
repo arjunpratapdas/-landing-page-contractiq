@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, UserProfile, getUserProfile } from '@/lib/supabase';
@@ -9,7 +8,7 @@ type AuthContextType = {
   profile: UserProfile | null;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, captchaToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
 };
@@ -88,13 +87,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
+  const signUp = async (email: string, password: string, name: string, captchaToken?: string) => {
     try {
       setIsLoading(true);
-      // Create the user in Supabase Auth
+      // Create the user in Supabase Auth with CAPTCHA token
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          captchaToken,
+        },
       });
 
       if (authError) throw authError;

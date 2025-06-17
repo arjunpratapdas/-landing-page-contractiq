@@ -1,8 +1,8 @@
-
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, File } from 'lucide-react';
+import ReCAPTCHA from 'react-google-recaptcha';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import Navbar from "@/components/Navbar";
@@ -15,20 +15,37 @@ const SignUp = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const { signUp } = useAuth();
   const navigate = useNavigate();
   
   const togglePasswordVisibility = () => setShowPassword(!showPassword);
   
+  const handleCaptchaChange = (token: string | null) => {
+    setCaptchaToken(token);
+  };
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!captchaToken) {
+      alert('Please complete the CAPTCHA verification');
+      return;
+    }
+    
     setIsLoading(true);
     
     try {
-      await signUp(email, password, name);
+      await signUp(email, password, name, captchaToken);
       navigate('/profile');
     } catch (error) {
       console.error('Sign up error:', error);
+      // Reset reCAPTCHA on error
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset();
+        setCaptchaToken(null);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -132,10 +149,19 @@ const SignUp = () => {
               </div>
             </div>
             
+            <div className="flex justify-center">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"}
+                onChange={handleCaptchaChange}
+                theme="dark"
+              />
+            </div>
+            
             <Button
               type="submit"
               className="w-full bg-gradient-blue hover:shadow-lg hover:shadow-blue-500/20 transition-all py-5"
-              disabled={isLoading || !termsAccepted}
+              disabled={isLoading || !termsAccepted || !captchaToken}
             >
               {isLoading ? (
                 <span className="flex items-center justify-center">
